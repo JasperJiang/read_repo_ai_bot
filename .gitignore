@@ -1,0 +1,22 @@
+# Ignore Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environments
+venv/
+env/
+.venv/
+
+# Ignore IDE specific files
+.vscode/
+.idea/
+
+# Ignore cloned repository directory
+cloned_repo/
+
+# Ignore Chroma vector store data
+chroma-data/
+
+config.ini
