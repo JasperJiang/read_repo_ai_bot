@@ -6,7 +6,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.schema.runnable import RunnableSequence
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import DashScopeEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import CharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
 
@@ -31,7 +31,7 @@ def initialize_model(model_name=None):
     # Initialize the ChatOpenAI model with optional API key, base URL, and model name
     return ChatOpenAI(model_name=model_name)
 
-def process_repo_to_vector_store(repo_dir):
+def process_repo_to_vector_store(repo_dir, model_name):
     """
     Process the files in the cloned repository and convert them into vectors stored in Chroma.
     
@@ -48,7 +48,7 @@ def process_repo_to_vector_store(repo_dir):
     texts = text_splitter.split_documents(documents)
     
     # Create embeddings and store them in Chroma
-    embeddings = DashScopeEmbeddings(model="text-embedding-v1")
+    embeddings = OllamaEmbeddings(model=model_name)
     vector_store = Chroma.from_documents(texts, embeddings)
     
     return vector_store
@@ -62,15 +62,18 @@ def init_environ():
     os.environ['DASHSCOPE_API_KEY'] = api_key
     os.environ['OPENAI_BASE_URL'] = base_url
 
+config = configparser.ConfigParser()
+config.read('config.ini')
+model_name = config['api']['model_name']
 init_environ()
 # Clone the Git repository before initializing the model
 git_repo_url = "https://github.com/yikousu/sms.git"  # Replace with your Git repository URL
 target_directory = "./cloned_repo"  # Replace with your target directory
 # clone_git_repo(git_repo_url, target_directory)
 # Process the repository files and convert them into vectors stored in Chroma
-vector_store = process_repo_to_vector_store(target_directory)
+vector_store = process_repo_to_vector_store(target_directory, model_name)
 # Initialize the model with optional API key, base URL, and model name
-model = initialize_model(model_name="qwen-coder-turbo")
+model = initialize_model(model_name=model_name)
 # Define the prompt template with context from the vector store
 prompt_template = PromptTemplate(
     input_variables=["input_text", "context"],
@@ -88,5 +91,6 @@ while True:
     retrieved_docs = vector_store.similarity_search(input_text)
     context = "\n".join([doc.page_content for doc in retrieved_docs])
     # Invoke the chat chain with the input text and context
-    response = chat_chain.invoke({"input_text": input_text, "context": context})
-    print(response.content)
+    for chunk in chat_chain.stream({"input_text": input_text, "context": context}):
+        print(chunk.content, end="", flush=True)
+    print()  # 换行
