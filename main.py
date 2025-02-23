@@ -2,10 +2,11 @@ import subprocess
 import shutil
 import os
 import configparser
+import sys
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.schema.runnable import RunnableSequence
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import CharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
@@ -49,9 +50,16 @@ def process_repo_to_vector_store(repo_dir, model_name):
     
     # Create embeddings and store them in Chroma
     embeddings = OllamaEmbeddings(model=model_name)
-    vector_store = Chroma.from_documents(texts, embeddings)
-    
+    vector_store = Chroma.from_documents(texts, embeddings, persist_directory="./chroma_db")
     return vector_store
+
+def local_to_vector_store(model_name):
+    if os.path.exists("./chroma_db") == False:
+        sys.exit("No Chroma DB found, please run the script first")
+    embeddings = OllamaEmbeddings(model=model_name)
+    vector_store = Chroma(embedding_function = embeddings, persist_directory="./chroma_db")
+    return vector_store
+
 
 def init_environ():
     config = configparser.ConfigParser()
@@ -69,9 +77,15 @@ init_environ()
 # Clone the Git repository before initializing the model
 git_repo_url = "https://github.com/yikousu/sms.git"  # Replace with your Git repository URL
 target_directory = "./cloned_repo"  # Replace with your target directory
-# clone_git_repo(git_repo_url, target_directory)
-# Process the repository files and convert them into vectors stored in Chroma
-vector_store = process_repo_to_vector_store(target_directory, model_name)
+reload = input("Reload Repository? (y/n)")
+vector_store = None
+if reload.lower() == "y":
+    clone_git_repo(git_repo_url, target_directory)
+    # Process the repository files and convert them into vectors stored in Chroma
+    vector_store = process_repo_to_vector_store(target_directory, model_name)
+else:
+    vector_store = local_to_vector_store(model_name)
+
 # Initialize the model with optional API key, base URL, and model name
 model = initialize_model(model_name=model_name)
 # Define the prompt template with context from the vector store
