@@ -10,6 +10,10 @@ from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import CharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
+import gradio as gr
+import time
+from langchain.memory import ConversationBufferMemory
+
 
 def clone_git_repo(repo_url, target_dir):
     """
@@ -70,41 +74,61 @@ def init_environ():
     os.environ['DASHSCOPE_API_KEY'] = api_key
     os.environ['OPENAI_BASE_URL'] = base_url
 
-config = configparser.ConfigParser()
-config.read('config.ini')
-model_name = config['api']['model_name']
-init_environ()
-# Clone the Git repository before initializing the model
-git_repo_url = "https://github.com/yikousu/sms.git"  # Replace with your Git repository URL
-target_directory = "./cloned_repo"  # Replace with your target directory
-reload = input("Reload Repository? (y/n)")
-vector_store = None
-if reload.lower() == "y":
-    clone_git_repo(git_repo_url, target_directory)
-    # Process the repository files and convert them into vectors stored in Chroma
-    vector_store = process_repo_to_vector_store(target_directory, model_name)
-else:
-    vector_store = local_to_vector_store(model_name)
 
-# Initialize the model with optional API key, base URL, and model name
-model = initialize_model(model_name=model_name)
-# Define the prompt template with context from the vector store
-prompt_template = PromptTemplate(
-    input_variables=["input_text", "context"],
-    template="You are a helpful assistant. Use the following context to respond to the question: {context}\n\nQuestion: {input_text}"
-)
-# Create the RunnableSequence
-chat_chain = prompt_template | model
-# Retrieve relevant context from the vector store
-while True:
-    input_text = input("Enter your question (or 'exit' to quit): ")
-    if input_text.lower() == 'exit':
-        print("Exiting the conversation.")
-        break
+# while True:
+#     input_text = input("Enter your question (or 'exit' to quit): ")
+#     if input_text.lower() == 'exit':
+#         print("Exiting the conversation.")
+#         break
     
-    retrieved_docs = vector_store.similarity_search(input_text)
+#     retrieved_docs = vector_store.similarity_search(input_text)
+#     context = "\n".join([doc.page_content for doc in retrieved_docs])
+#     # Invoke the chat chain with the input text and context
+#     for chunk in chat_chain.stream({"input_text": input_text, "context": context}):
+#         print(chunk.content, end="", flush=True)
+#     print()  # 换行
+
+
+def echo(message, history):
+    retrieved_docs = vector_store.similarity_search(message)
     context = "\n".join([doc.page_content for doc in retrieved_docs])
-    # Invoke the chat chain with the input text and context
-    for chunk in chat_chain.stream({"input_text": input_text, "context": context}):
-        print(chunk.content, end="", flush=True)
-    print()  # 换行
+    result = "result: "
+    for chunk in chat_chain.stream({"input_text": message, "context": context}):
+       result += chunk.content
+       yield result
+
+global vector_store
+global chat_chain
+global history
+
+if __name__ == "__main__":
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    model_name = config['api']['model_name']
+    init_environ()
+    # Clone the Git repository before initializing the model
+    git_repo_url = "https://github.com/yikousu/sms.git"  # Replace with your Git repository URL
+    target_directory = "./cloned_repo"  # Replace with your target directory
+    reload = input("Reload Repository? (y/n)")
+    vector_store = None
+    if reload.lower() == "y":
+        clone_git_repo(git_repo_url, target_directory)
+        # Process the repository files and convert them into vectors stored in Chroma
+        vector_store = process_repo_to_vector_store(target_directory, model_name)
+    else:
+        vector_store = local_to_vector_store(model_name)
+
+    # Initialize the model with optional API key, base URL, and model name
+    model = initialize_model(model_name=model_name)
+    # Define the prompt template with context from the vector store
+    prompt_template = PromptTemplate(
+        input_variables=["input_text", "context"],
+        template="You are a helpful assistant. Use the following context to respond to the question: {context}\n\nQuestion: {input_text}"
+    )
+    # Create the RunnableSequence
+    chat_chain = prompt_template | model
+
+
+    # Retrieve relevant context from the vector store
+    demo = gr.ChatInterface(fn=echo, type="messages", save_history=True, examples=["你能做什么？", "介绍一下这个项目有哪些controller", "介绍一下com.manger.sms.controller.User.AdminController 中 userLogin() 方法的时序图，并用Mermaid画出来"], title="Echo Bot")
+    demo.launch()
